@@ -1,41 +1,33 @@
-import _debug from './debug';
-
-const debug = _debug();
-const warn = _debug(); // create a namespaced warning
-warn.log = console.warn.bind(console); // eslint-disable-line no-console
-
 const DEFAULT_LIMIT = 10;
 const DEFAULT_MAX_LIMIT = 100;
-const DEFAUL_NO_MAX_LIMIT = false;
+const DEFAULT_NO_MAX_LIMIT = false;
 
 export default async (Model, options = {}) => {
-  debug('Pagintor mixin for model %s', Model.modelName);
-
   Model.getApp((error, app) => {
     if (error) {
-      debug(`Error getting app: ${error}`);
+      console.error(`Error getting app: ${error}`);
     }
     
     let globalOptions = app.get('paginator') || {};
     options.limit = options.limit || globalOptions.limit || DEFAULT_LIMIT;
     options.maxLimit = options.maxLimit || globalOptions.maxLimit || DEFAULT_MAX_LIMIT;
-    options.noMaxLimit = options.noMaxLimit || globalOptions.noMaxLimit || DEFAUL_NO_MAX_LIMIT;
+    options.noMaxLimit = options.noMaxLimit || globalOptions.noMaxLimit || DEFAULT_NO_MAX_LIMIT;
   });
 
   Model.beforeRemote('find', async (context) => {
-    if (!context.req.query.page) { return; }
+    if (!context.args.filter.page) { return; }
 
-    context.args.filter = modifyFilter(context.args.filter, context.req.query.page);
+    context.args.filter = modifyFilter(context.args.filter);
   });
 
   Model.afterRemote('find', async (context) => {
-    if (!context.req.query.page) { return; }
+    if (!context.args.filter.page) { return; }
 
     const limit = getLimit(context.args.filter);
     const where = context.args.filter.where || null;
     const totalItemCount = await Model.count(where);
     const totalPageCount = Math.ceil(totalItemCount / limit);
-    const currentPage = parseInt(context.req.query.page) || 1;
+    const currentPage = parseInt(context.args.filter.page) || 1;
     const previousPage = currentPage - 1;
     const nextPage = currentPage + 1;
 
@@ -47,7 +39,7 @@ export default async (Model, options = {}) => {
         itemsPerPage: limit,
         currentPage: currentPage,
       }
-    }
+    };
 
     if (nextPage <= totalPageCount) {
       context.result.meta.nextPage = nextPage;
@@ -58,15 +50,15 @@ export default async (Model, options = {}) => {
     }
   });
 
-  function modifyFilter(filter, page) {
+  function modifyFilter(filter) {
     const limit = getLimit(filter);
-    const skip = (page - 1) * limit;
+    const skip = (filter.page - 1) * limit;
 
     if (!filter) {
       filter = {
         skip: skip,
         limit: limit,
-      }
+      };
       return filter;
     }
 
